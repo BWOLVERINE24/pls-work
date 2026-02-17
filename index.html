@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"><title>UNIVERSAL HORROR</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; color: white; }
+        #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,0,0,0.9); z-index: 100; cursor: pointer; text-align: center; }
+        #msg { position: fixed; bottom: 30px; width: 100%; text-align: center; color: #f00; font-size: 24px; display: none; font-weight: bold; z-index: 50; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1 style="color: #800;">DON'T MOVE</h1>
+        <p>1. CLICK TO START<br>2. HOLD W TO WALK<br>3. DRAG MOUSE TO LOOK</p>
+    </div>
+    <div id="msg">... IT HEARS YOU ...</div>
+
+    <!-- Reliable Three.js link -->
+    <script src="https://cdnjs.cloudflare.com"></script>
+
+    <script>
+        let isBreathing = false, gameActive = false, isJumpscaring = false;
+        let yaw = 0, pitch = 0; // Manual rotation fallback
+        const keys = {};
+
+        // --- ENGINE SETUP ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x000000, 1, 15);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: false }); // False for speed on HP
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- WORLD ---
+        const wallMat = new THREE.MeshBasicMaterial({ color: 0x080808 });
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(10, 100), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+        floor.rotation.x = -Math.PI/2; scene.add(floor);
+        const lWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 100), wallMat);
+        lWall.position.set(-4, 2.5, 0); scene.add(lWall);
+        const rWall = lWall.clone(); rWall.position.x = 4; scene.add(rWall);
+
+        // --- MONSTER ---
+        const monster = new THREE.Group();
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), new THREE.MeshBasicMaterial({ color: 0x220000 }));
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+        eye.position.set(-0.2, 0.1, 0.3);
+        const eye2 = eye.clone(); eye2.position.x = 0.2;
+        monster.add(head, eye, eye2);
+        monster.visible = false;
+        scene.add(monster);
+
+        const flashlight = new THREE.PointLight(0xffffff, 1, 12);
+        scene.add(flashlight);
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // --- INPUTS ---
+        document.getElementById('ui').addEventListener('mousedown', () => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            gameActive = true;
+            document.getElementById('ui').style.display = 'none';
+            // Try locking, but it doesn't matter if it fails now
+            document.body.requestPointerLock();
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!gameActive) return;
+            // Works for BOTH locked mouse and dragging
+            const movementX = e.movementX || 0;
+            const movementY = e.movementY || 0;
+            yaw -= movementX * 0.003;
+            pitch -= movementY * 0.003;
+            pitch = Math.max(-Math.PI/3, Math.min(Math.PI/3, pitch));
+        });
+
+        window.addEventListener('keydown', (e) => keys[e.code] = true);
+        window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+        function triggerJumpscare() {
+            if (isJumpscaring) return;
+            isJumpscaring = true; gameActive = false;
+            monster.visible = true;
+            
+            const osc = audioCtx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.value = 150;
+            osc.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 1);
+            
+            setTimeout(() => location.reload(), 1500);
+        }
+
+        setInterval(() => {
+            if (!gameActive) return;
+            isBreathing = Math.random() > 0.5;
+            document.getElementById('msg').style.display = isBreathing ? 'block' : 'none';
+        }, 2000);
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (gameActive) {
+                camera.rotation.set(pitch, yaw, 0, 'YXZ');
+                
+                if (keys['KeyW']) {
+                    if (isBreathing) triggerJumpscare();
+                    camera.position.x -= Math.sin(yaw) * 0.08;
+                    camera.position.z -= Math.cos(yaw) * 0.08;
+                }
+
+                flashlight.position.copy(camera.position);
+                if (isJumpscaring) {
+                    monster.position.copy(camera.position).add(new THREE.Vector3(0, -0.2, -0.7).applyQuaternion(camera.quaternion));
+                }
+            }
+            renderer.render(scene, camera);
+        }
+        camera.position.set(0, 1.6, 10);
+        animate();
+    </script>
+</body>
+</html>
